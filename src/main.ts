@@ -12,6 +12,7 @@ import { organizeCanvas } from './canvas/organizer';
 declare module 'obsidian' {
   interface Workspace {
     on(name: 'canvas:node-menu', callback: (menu: Menu, node: CanvasNodeInstance) => void): EventRef;
+    on(name: 'canvas:selection-menu', callback: (menu: Menu, canvas: unknown) => void): EventRef;
   }
 }
 
@@ -119,6 +120,15 @@ export default class DetailedCanvasPlugin extends Plugin {
               });
           });
         }
+
+      })
+    );
+
+    // Register context menu for canvas multi-selection
+    // 'canvas:selection-menu' fires when right-clicking with multiple nodes selected
+    this.registerEvent(
+      this.app.workspace.on('canvas:selection-menu', (menu: Menu) => {
+        this.addBatchEnrichMenuItem(menu);
       })
     );
 
@@ -178,6 +188,25 @@ export default class DetailedCanvasPlugin extends Plugin {
   onunload() {
     this.canvasMonitor?.stopWatching();
   }
+
+  // Add "Enrich all selected" to a menu if there are selected link nodes
+  private addBatchEnrichMenuItem(menu: Menu): void {
+    const canvasView = this.getActiveCanvasView();
+    if (!canvasView) return;
+
+    const selectedLinks = this.getSelectedLinkNodes(canvasView);
+    if (selectedLinks.length < 1) return;
+
+    menu.addItem((item) => {
+      item
+        .setTitle(`Enrich ${selectedLinks.length > 1 ? `all selected (${selectedLinks.length})` : 'selected link'}`)
+        .setIcon('sparkles')
+        .onClick(() => {
+          void this.enrichSelectedLinks(canvasView);
+        });
+    });
+  }
+
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -268,8 +297,12 @@ export default class DetailedCanvasPlugin extends Plugin {
 
       const cardText = `${imageLine}## [${title}](${node.url})\n\n${desc}\n\n*${siteName}*`;
 
+      // Compute enriched card dimensions
+      const enrichedWidth = 400;
+      const enrichedHeight = imageLine ? 400 : 250;
+
       // Step 4: Update the text node directly on the canvas
-      const updated = await this.updateCanvasNodeText(canvasFile, node.id, cardText);
+      const updated = await this.updateCanvasNodeText(canvasFile, node.id, cardText, enrichedWidth, enrichedHeight);
 
       if (!updated) {
         throw new Error('Failed to update canvas node');
@@ -296,8 +329,14 @@ export default class DetailedCanvasPlugin extends Plugin {
     }
   }
 
-  // Update a canvas node's text content via file I/O — works on mobile and desktop
-  private async updateCanvasNodeText(canvasFile: TFile, nodeId: string, newText: string): Promise<boolean> {
+  // Update a canvas node's text content (and optionally size) via file I/O — works on mobile and desktop
+  private async updateCanvasNodeText(
+    canvasFile: TFile,
+    nodeId: string,
+    newText: string,
+    width?: number,
+    height?: number,
+  ): Promise<boolean> {
     try {
       await this.app.vault.process(canvasFile, (content) => {
         const canvasData = JSON.parse(content);
@@ -305,12 +344,95 @@ export default class DetailedCanvasPlugin extends Plugin {
         if (!node) return content; // Return unchanged if node not found
         node.text = newText;
         node.type = 'text'; // Convert link nodes to text nodes for enrichment
+        if (width !== undefined) node.width = Math.max(node.width ?? 0, width);
+        if (height !== undefined) node.height = height;
         return JSON.stringify(canvasData, null, '\t');
       });
       return true;
     } catch {
       return false;
     }
+  }
+
+  // Reposition a set of node IDs into a non-overlapping grid centred on their original centroid
+  private async spreadNodes(canvasFile: TFile, nodeIds: string[]): Promise<void> {
+    if (nodeIds.length === 0) return;
+
+    await this.app.vault.process(canvasFile, (content) => {
+      const canvasData = JSON.parse(content);
+      const allNodes: Array<{ id: string; x: number; y: number; width: number; height: number }> =
+        canvasData.nodes ?? [];
+
+      // Collect only the nodes we enriched
+      const targets = nodeIds
+        .map((id) => allNodes.find((n) => n.id === id))
+        .filter((n): n is { id: string; x: number; y: number; width: number; height: number } => n !== undefined);
+
+      if (targets.length === 0) return content;
+
+      // Compute centroid of original positions
+      const cx = targets.reduce((s, n) => s + n.x + n.width / 2, 0) / targets.length;
+      const cy = targets.reduce((s, n) => s + n.y + n.height / 2, 0) / targets.length;
+
+      // Determine grid dimensions — aim for ~3 columns
+      const cols = Math.min(3, targets.length);
+      const rows = Math.ceil(targets.length / cols);
+      const gap = 20;
+
+      // Total grid size
+      const gridW = targets.reduce((max, n, i) => {
+        const col = i % cols;
+        return col === 0 ? Math.max(max, n.width) : max + n.width + gap;
+      }, 0);
+
+      // We compute per-column max widths and per-row max heights for a tidy grid
+      const colWidths: number[] = Array(cols).fill(0);
+      const rowHeights: number[] = Array(rows).fill(0);
+      targets.forEach((n, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        colWidths[col] = Math.max(colWidths[col], n.width);
+        rowHeights[row] = Math.max(rowHeights[row], n.height);
+      });
+
+      const totalW = colWidths.reduce((s, w) => s + w, 0) + gap * (cols - 1);
+      const totalH = rowHeights.reduce((s, h) => s + h, 0) + gap * (rows - 1);
+
+      // Top-left origin so the grid is centred on the original centroid
+      const originX = cx - totalW / 2;
+      const originY = cy - totalH / 2;
+
+      // Build cumulative x/y offsets per column/row
+      const colX: number[] = [];
+      let accX = originX;
+      for (let c = 0; c < cols; c++) {
+        colX.push(accX);
+        accX += colWidths[c] + gap;
+      }
+
+      const rowY: number[] = [];
+      let accY = originY;
+      for (let r = 0; r < rows; r++) {
+        rowY.push(accY);
+        accY += rowHeights[r] + gap;
+      }
+
+      // Apply new positions
+      targets.forEach((target, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const node = allNodes.find((n) => n.id === target.id);
+        if (node) {
+          node.x = Math.round(colX[col]);
+          node.y = Math.round(rowY[row]);
+        }
+      });
+
+      // Suppress unused variable warning
+      void gridW;
+
+      return JSON.stringify(canvasData, null, '\t');
+    });
   }
 
   // Enrich selected links in canvas view
@@ -320,8 +442,17 @@ export default class DetailedCanvasPlugin extends Plugin {
 
     if (!canvasFile || selection.length === 0) return;
 
+    const enrichedIds: string[] = [];
     for (const node of selection) {
-      await this.enrichLinkNode(canvasFile, node);
+      const result = await this.enrichLinkNode(canvasFile, node);
+      if (result.success) {
+        enrichedIds.push(node.id);
+      }
+    }
+
+    // Spread enriched nodes so they don't overlap
+    if (enrichedIds.length > 1) {
+      await this.spreadNodes(canvasFile, enrichedIds);
     }
   }
 
@@ -368,8 +499,17 @@ export default class DetailedCanvasPlugin extends Plugin {
 
     new Notice(`Enriching ${validLinks.length} link cards...`);
 
+    const enrichedIds: string[] = [];
     for (const node of validLinks) {
-      await this.enrichLinkNode(canvasFile, node);
+      const result = await this.enrichLinkNode(canvasFile, node);
+      if (result.success) {
+        enrichedIds.push(node.id);
+      }
+    }
+
+    // Spread enriched nodes so they don't overlap
+    if (enrichedIds.length > 1) {
+      await this.spreadNodes(canvasFile, enrichedIds);
     }
 
     new Notice('Finished enriching all link cards');
@@ -441,26 +581,60 @@ export default class DetailedCanvasPlugin extends Plugin {
   private getSelectedLinkNodes(canvasView: ItemView): CanvasLinkData[] {
     try {
       if (!('canvas' in canvasView)) return [];
-      const { canvas } = canvasView as ItemView & { canvas: { selection?: Set<CanvasNodeInstance> } | undefined };
+
+      type CanvasNodeAny = Record<string, unknown> & {
+        getData?: () => Record<string, unknown> | undefined;
+        url?: string;
+        id?: string;
+        x?: number;
+        y?: number;
+        width?: number;
+        height?: number;
+      };
+      const canvas = (canvasView as ItemView & { canvas: { selection?: Set<CanvasNodeAny> } }).canvas;
       if (!canvas?.selection) return [];
 
       const selected: CanvasLinkData[] = [];
       for (const node of canvas.selection) {
-        const data = node.getData?.();
+        // Try getData() first, fall back to reading properties directly from the node instance
+        const data = node.getData?.() ?? node;
         if (!data) continue;
 
-        if (data.type === 'link' && typeof data.url === 'string' && isValidUrl(data.url)) {
-          selected.push(data as unknown as CanvasLinkData);
-        } else if (data.type === 'text' && 'text' in data && typeof (data as unknown as { text: string }).text === 'string' && isValidUrl((data as unknown as { text: string }).text.trim())) {
-          const textData = data as unknown as { id: string; text: string; x: number; y: number; width: number; height: number };
+        const type = data.type as string | undefined;
+        const url = (data.url as string | undefined) ?? (node.url as string | undefined);
+        const text = data.text as string | undefined;
+        const id = (data.id as string | undefined) ?? (node.id as string | undefined);
+
+        if (type === 'link' && typeof url === 'string' && isValidUrl(url) && id) {
           selected.push({
-            id: textData.id, type: 'link', url: textData.text.trim(),
-            x: textData.x, y: textData.y, width: textData.width, height: textData.height,
+            id,
+            type: 'link',
+            url,
+            x: (data.x ?? node.x ?? 0) as number,
+            y: (data.y ?? node.y ?? 0) as number,
+            width: (data.width ?? node.width ?? 400) as number,
+            height: (data.height ?? node.height ?? 200) as number,
           } as CanvasLinkData);
+        } else if (type === 'text' && typeof text === 'string' && id) {
+          // Check if text node contains a URL (either the whole text or first line)
+          const firstLine = text.split('\n')[0].trim();
+          const urlCandidate = isValidUrl(text.trim()) ? text.trim() : isValidUrl(firstLine) ? firstLine : null;
+          if (urlCandidate) {
+            selected.push({
+              id,
+              type: 'link',
+              url: urlCandidate,
+              x: (data.x ?? node.x ?? 0) as number,
+              y: (data.y ?? node.y ?? 0) as number,
+              width: (data.width ?? node.width ?? 400) as number,
+              height: (data.height ?? node.height ?? 200) as number,
+            } as CanvasLinkData);
+          }
         }
       }
       return selected;
-    } catch {
+    } catch (e) {
+      console.error('[DetailedCanvas] getSelectedLinkNodes error:', e);
       return [];
     }
   }
