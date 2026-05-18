@@ -1,6 +1,6 @@
 # Detailed Canvas
 
-![Detailed Canvas](public/detailed-canvas-cover.png)
+![Detailed Canvas](public/detailed-canvas-cover.svg)
 
 Enrich Obsidian Canvas link cards with AI-generated summaries, images, and metadata. Supports Ollama, OpenAI, Claude, Groq, and OpenRouter.
 

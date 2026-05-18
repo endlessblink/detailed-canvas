@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1312" height="736" viewBox="0 0 1312 736" role="img" aria-labelledby="title desc">
+  <title id="title">Detailed Canvas project cover</title>
+  <desc id="desc">A dark canvas interface with enriched link cards connected by thin lines.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1017"/>
+      <stop offset="0.58" stop-color="#131722"/>
+      <stop offset="1" stop-color="#1d1a2b"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#000000" flood-opacity="0.36"/>
+    </filter>
+  </defs>
+  <rect width="1312" height="736" fill="url(#bg)"/>
+  <g stroke="#8e9cff" stroke-width="1" opacity="0.12">
+    <path d="M170 180 C334 86 478 280 650 198 S946 158 1122 260" fill="none"/>
+    <path d="M210 538 C396 406 534 602 718 480 S1012 406 1148 552" fill="none"/>
+    <path d="M224 338 H1068"/>
+  </g>
+  <g transform="translate(126 112)">
+    <text x="0" y="0" fill="#aeb8ff" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="5">OBSIDIAN CANVAS</text>
+    <text x="0" y="78" fill="#f7f1ff" font-family="Inter, Arial, sans-serif" font-size="84" font-weight="850" letter-spacing="-4">Detailed Canvas</text>
+    <text x="3" y="126" fill="#bfc5dc" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="500">AI-generated summaries, images, and metadata for link cards.</text>
+  </g>
+  <g transform="translate(178 304)" filter="url(#shadow)">
+    <rect width="276" height="168" rx="26" fill="#202638" stroke="#5d6fd9" stroke-opacity="0.26"/>
+    <rect x="24" y="24" width="72" height="72" rx="18" fill="#7080ff" opacity="0.22"/>
+    <rect x="116" y="32" width="116" height="13" rx="6.5" fill="#f4f0ff" opacity="0.86"/>
+    <rect x="116" y="62" width="132" height="9" rx="4.5" fill="#bfc5dc" opacity="0.55"/>
+    <rect x="24" y="122" width="216" height="10" rx="5" fill="#bfc5dc" opacity="0.34"/>
+  </g>
+  <g transform="translate(536 260)" filter="url(#shadow)">
+    <rect width="340" height="216" rx="30" fill="#fbf6ea"/>
+    <rect x="28" y="28" width="284" height="72" rx="18" fill="#212635"/>
+    <rect x="48" y="124" width="172" height="14" rx="7" fill="#202638" opacity="0.82"/>
+    <rect x="48" y="158" width="244" height="10" rx="5" fill="#6d7182" opacity="0.48"/>
+    <rect x="48" y="180" width="198" height="10" rx="5" fill="#6d7182" opacity="0.34"/>
+  </g>
+  <g transform="translate(954 346)" filter="url(#shadow)">
+    <rect width="236" height="146" rx="24" fill="#1b2030" stroke="#c3a5ff" stroke-opacity="0.25"/>
+    <rect x="24" y="26" width="110" height="12" rx="6" fill="#f4f0ff" opacity="0.82"/>
+    <rect x="24" y="62" width="172" height="9" rx="4.5" fill="#bfc5dc" opacity="0.46"/>
+    <rect x="24" y="84" width="138" height="9" rx="4.5" fill="#bfc5dc" opacity="0.28"/>
+  </g>
+  <circle cx="512" cy="382" r="9" fill="#aeb8ff"/>
+  <circle cx="910" cy="372" r="9" fill="#c3a5ff"/>
+</svg>
